@@ -1,0 +1,13 @@
+{
+    "name": "themainframe/php-ilda",
+    "description": "ILDA (International Laser Display Association) Frame Handling in PHP",
+    "authors": [
+        {
+            "name": "Damien Walsh",
+            "email": "me@damow.net"
+        }
+    ],
+    "require": {
+
+    }
+}
