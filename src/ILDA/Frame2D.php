@@ -8,10 +8,11 @@
 namespace ILDA;
 
 /**
- * 2D Point
+ * Frame
+ * Represents a 2D ILDA Laser Show Frame.
  *
  * @since 1.0
  */
-class Point2D extends AbstractPoint
+class Frame2D extends AbstractFrame
 {
 }

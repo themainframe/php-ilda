@@ -7,10 +7,12 @@
  */
 namespace ILDA;
 
+use psr\log\LoggerInterface;
+use Psr\Log\NullLogger;
+
 /**
  * Frame Reader.
- * Reads framefiles (.ild) and provides information about them.
- * Currently supports only 3D (type 0000) frames.
+ * Reads frame files (.ild) and provides information about them.
  * 
  * @since 1.0
  */
@@ -22,15 +24,11 @@ class FrameReader
      */
     private $handle = null;
 
-    // ------------------------------------------------------
-    // BEGIN parameters of the current frame
-    // ------------------------------------------------------
-
     /**
-     * Points
-     * @var array
+     * A logger to report the read process to.
+     * @private LoggerInterface
      */
-    public $points = array();
+    private $logger = null;
 
     /**
      * The current global byte offset.
@@ -45,69 +43,30 @@ class FrameReader
     public $currentFrameIndex = 0;
 
 
-    // ------------------------------------------------------
-    // END parameters of the current frame.
-    // ------------------------------------------------------
-
     /**
-     * Helper
-     * Big-endian Motorola integer to PHP integer
-     */
-    private function bigEndianToInt($motorola)
-    {
-        $binStr = '';
-
-        for($c = 0; $c < strlen($motorola); $c ++)
-        {
-            $binStr .= str_pad(decbin(ord($motorola[$c])), 8, '0', STR_PAD_LEFT);
-        }
-
-        return bindec($binStr);
-    }
-
-    /**
-     * Helper
-     * Two's Complement integer to PHP integer
-     */
-    private function twosComplimentToInt($tcString)
-    {
-        $binStr = '';
-
-        for($c = 0; $c < strlen($tcString); $c ++)
-        {
-            $binStr = str_pad(decbin(ord($tcString[$c])), 8, '0', STR_PAD_LEFT) . $binStr;
-        }
-
-        // First bit is worth -ve
-        $value = pow(2, strlen($binStr) - 1);
-        $value = $binStr[0] === '1' ? -$value : 0;
-
-        // Remove that bit
-        $binStr = substr($binStr, 1);
-
-
-        return $value + bindec($binStr);
-    }
-
-    /**
-     * Construct: Framefile_Reader
+     * Construct: FrameReader
      * @param string $filename The file to parse.
+     * @param LoggerInterface $logger A logger
      */
-    public function __construct($filename)
+    public function __construct($filename, LoggerInterface $logger = null)
     {
+        // Create a null logger if no logger is provided
+        if ($logger == null) {
+            $logger = new NullLogger;
+        }
+
+        $this->logger = $logger;
         $this->handle = fopen($filename, 'r');
 
-        if(!$this->handle)
-        {
-            print 'Error: unable to open ILDA framefile ' . $filename . PHP_EOL;
+        if (!$this->handle) {
+            $this->logger->error('unable to open ILDA framefile ' . $filename);
             return false;
         }
 
         // Initial verification that this is a framefile
         // First bytes in file should be ILDA magic sequence
-        if(!$this->readValidILDA())
-        {
-            print 'Error: No ILDA marker found at byte offset 0' . PHP_EOL;
+        if (!$this->readValidILDA()) {
+            $this->logger->warning('no ILDA magic sequence at offset 0');
             return false;
         }
 
@@ -117,20 +76,42 @@ class FrameReader
         return $this;
     }
 
+
     /**
      * Read the next frame from the file.
+     *
+     * @return Frame2D|Frame3D
      */
     public function nextFrame()
     {
-        $frame = new Frame();
-
         // Check that "ILDA" is under the cursor
-        if(!$this->readValidILDA())
-        {
-            print "Not currently on ILDA" . PHP_EOL;
+        if (!$this->readValidILDA()) {
+            $this->logger->warning('no ILDA magic sequence found');
         }
 
-        $frame->ildaFrameType = $this->readFrameType();
+        $frameType = $this->readFrameType();
+        $this->logger->info('discovered ' . $frameType . ' type frame at offset ' . $this->byteIndex);
+
+        $frame = null;
+
+        switch($frameType)
+        {
+            case 0x00:
+                $frame = new Frame3D;
+                break;
+
+            case 0x01:
+                $frame = new Frame2D;
+                break;
+
+            case 0x02:
+            case 0x03:
+
+                break;
+        }
+
+        // Build the initial frame parameters
+        $frame->ildaFrameType = $frameType;
         $frame->ildaFrameName = $this->readFrameName();
         $frame->ildaAuthorName = $this->readAuthorName();
         $frame->ildaPointCount = $this->readPointCount();
@@ -139,37 +120,59 @@ class FrameReader
         $frame->ildaScannerHeadID = $this->readScannerHeadID();
 
         // Read points
-        for($point = 0; $point < $frame->ildaPointCount; $point ++)
-        {
-            $frame->points[] = $this->readPoint();
+        $this->logger->info('expecting ' . $frame->ildaPointCount . ' points');
+        for ($point = 0; $point < $frame->ildaPointCount; $point ++) {
+            $frame->points[] = $this->readPoint($frame);
         }
+
+        $this->logger->info('read ' . count($frame->points) . ' points');
 
         return $frame;
     }
 
-    private function readPoint()
+    /**
+     * Read a point from the current file cursor.
+     *
+     * @param AbstractFrame $frame
+     * @return Point2D|Point3D
+     */
+    private function readPoint(AbstractFrame $frame)
     {
-        $point = array();
-        $point['x'] = $this->twosComplimentToInt(fread($this->handle, 2));
+        // Create new point based on frame type
+        $point = $frame->ildaFrameType === 0x00 ? new Point3D : new Point2D;
+
+        // Store X-axis
+        $point->x = $this->twosComplimentToInt(fread($this->handle, 2));
+        $this->byteIndex += 2;
 
         // Y-axis needs postprocessing for bottom-up coordinates
-        $y = $this->twosComplimentToInt(fread($this->handle, 2));
-        $point['y'] = -$y;
+        $point->y = -$this->twosComplimentToInt(fread($this->handle, 2));
+        $this->byteIndex += 2;
 
-        $point['z'] = $this->twosComplimentToInt(fread($this->handle, 2));
+        if ($frame->ildaFrameType === 0x00) {
+            $point->z = $this->twosComplimentToInt(fread($this->handle, 2));
+            $this->byteIndex += 2;
+        }
 
         // Read Status Code
-        $code = str_pad(decbin(ord(fread($this->handle, 1))), 8, '0', STR_PAD_LEFT);
-        $code = str_pad(decbin(ord(fread($this->handle, 1))), 8, '0', STR_PAD_LEFT) . $code;
+        // TODO: add colour parsing
+        fread($this->handle, 1);
+
+        $codeByteB = fread($this->handle, 1);
+        $this->byteIndex += 2;
 
         // Blanking bit
-        $point['b'] = $code[1] == '1' ? true : false;
-
-        $this->byteIndex += 8;
+        $point->isBlanked = 0b01000000 & ord($codeByteB);
 
         return $point;
     }
 
+    /**
+     * Check if the cursor is currently at the ILDA magic byte string.
+     * Advances byteIndex automatically.
+     *
+     * @return bool
+     */
     private function readValidILDA()
     {
         fseek($this->handle, $this->byteIndex);
@@ -179,6 +182,12 @@ class FrameReader
         return $magicILDA === 'ILDA';
     }
 
+    /**
+     * Get the frame type
+     * Advances byteIndex automatically.
+     *
+     * @return int
+     */
     private function readFrameType()
     {
         fseek($this->handle, $this->byteIndex);
@@ -195,61 +204,129 @@ class FrameReader
         }
     }
 
+    /**
+     * Get the frame name label
+     * Advances byteIndex automatically.
+     *
+     * @return string
+     */
     private function readFrameName()
     {
         fseek($this->handle, $this->byteIndex);
-        $this->ildaFrameName = fread($this->handle, 8);
+        $ildaFrameName = fread($this->handle, 8);
         $this->byteIndex += 8;
 
-        return $this->ildaFrameName;
+        return $ildaFrameName;
     }
 
+    /**
+     * Get the author name
+     * Advances byteIndex automatically.
+     *
+     * @return string
+     */
     private function readAuthorName()
     {
         fseek($this->handle, $this->byteIndex);
-        $this->ildaAuthorName = fread($this->handle, 8);
+        $ildaAuthorName = fread($this->handle, 8);
         $this->byteIndex += 8;
 
-        return $this->ildaAuthorName;
+        return $ildaAuthorName;
     }
 
+    /**
+     * Get the point count for the frame
+     * Advances byteIndex automatically.
+     *
+     * @return int
+     */
     private function readPointCount()
     {
         fseek($this->handle, $this->byteIndex);
         $pointCountBytes = fread($this->handle, 2);
-        $this->ildaPointCount = $this->bigEndianToInt($pointCountBytes);
+        $ildaPointCount = $this->bigEndianToInt($pointCountBytes);
         $this->byteIndex += 2;
 
-        return $this->ildaPointCount;
+        return $ildaPointCount;
     }
 
+    /**
+     * Get the frame index
+     * Advances byteIndex automatically.
+     *
+     * @return int
+     */
     private function readFrameNumber()
     {
         fseek($this->handle, $this->byteIndex);
         $frameNumberBytes = fread($this->handle, 2);
-        $this->ildaFrameNumber = $this->bigEndianToInt($frameNumberBytes);
+        $ildaFrameNumber = $this->bigEndianToInt($frameNumberBytes);
         $this->byteIndex += 2;
 
-        return $this->ildaFrameNumber;
+        return $ildaFrameNumber;
     }
 
+    /**
+     * Get the number of frames in the sequence
+     * Advances byteIndex automatically.
+     *
+     * @return int
+     */
     private function readTotalFrames()
     {
         fseek($this->handle, $this->byteIndex);
         $totalFramesBytes = fread($this->handle, 2);
-        $this->ildaTotalFrames = $this->bigEndianToInt($totalFramesBytes);
+        $ildaTotalFrames = $this->bigEndianToInt($totalFramesBytes);
         $this->byteIndex += 2;
 
-        return $this->ildaTotalFrames;
+        return $ildaTotalFrames;
     }
 
+    /**
+     * Get the scanner head that will draw this frame
+     * Advances byteIndex automatically.
+     *
+     * @return int
+     */
     private function readScannerHeadID()
     {
         fseek($this->handle, $this->byteIndex);
         $scannerHeadIDBytes = fread($this->handle, 1);
-        $this->ildaScannerHeadID = $this->bigEndianToInt($scannerHeadIDBytes);
+        $ildaScannerHeadID = $this->bigEndianToInt($scannerHeadIDBytes);
         $this->byteIndex += 1;
 
-        return $this->ildaScannerHeadID;
+        return $ildaScannerHeadID;
+    }
+
+    /**
+     * Helper
+     *
+     * Two's Complement integer to PHP integer
+     *
+     * @param string $tcString The string of bytes to be manipulated
+     * @return integer
+     */
+    private function twosComplimentToInt($tcString)
+    {
+        $unpacked = unpack('s', $tcString);
+        return $unpacked[1];
+    }
+
+    /**
+     * Helper
+     *
+     * Big-endian Motorola integer to PHP
+     *
+     * @param string $motorola The string of bytes to be manipulated
+     * @return integer
+     */
+    private function bigEndianToInt($motorola)
+    {
+        if (strlen($motorola) < 2) {
+            $motorola = str_pad($motorola, 2, "\x00", STR_PAD_LEFT);
+        }
+
+        $unpacked = unpack('n', $motorola);
+        return $unpacked[1];
     }
 }
