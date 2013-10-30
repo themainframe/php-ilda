@@ -4,4 +4,4 @@ PHP class library for manipulating [ILDA (International Laser Display Associatio
 
 The library implements the standard as described in [this document](http://www.laserist.org/StandardsDocs/IDTF05-finaldraft.pdf).
 
-![A cat](http://link.damow.net/image/110S3U1j2L2O/test.png)
+-> ![A cat](http://link.damow.net/image/110S3U1j2L2O/test.png) <-
