@@ -12,7 +12,7 @@ use ILDA\DTF\Streams\StreamInterface;
 
 /**
  * CompoundField
- * A field that comprises a number of fields.
+ * A field that can comprise a number of fields.
  *
  * @since 1.0
  */
