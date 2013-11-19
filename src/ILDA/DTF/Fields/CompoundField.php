@@ -16,17 +16,12 @@ use ILDA\DTF\Streams\StreamInterface;
  *
  * @since 1.0
  */
-class CompoundField extends AbstractField
+class CompoundField implements FieldInterface
 {
     /**
      * @protected array The fields enclosed within this compound field.
      */
     protected $fields = array();
-
-    /**
-     * @protected int The number of times this compound field is repeated.
-     */
-    protected $count = 1;
 
     /**
      * @param int $count The number of times this compound field is repeated.
@@ -39,9 +34,9 @@ class CompoundField extends AbstractField
     /**
      * @param AbstractField $field The field to add to the compound field.
      */
-    public function addField(AbstractField $field)
+    public function addField($fieldName, FieldInterface $field)
     {
-        $this->fields[] = $field;
+        $this->fields[$fieldName] = $field;
     }
 
     /**
@@ -51,14 +46,15 @@ class CompoundField extends AbstractField
     public function read(StreamInterface $stream)
     {
         $readFields = array();
+        $count = isset($this->count) ? $this->count : 1;
 
         // Read this compound field $count times
-        for ($iteration = 0; $iteration < $this->count; $iteration ++) {
+        for ($iteration = 0; $iteration < $count; $iteration ++) {
 
             $subFields = array();
 
-            foreach ($this->fields as $field) {
-                $subFields[] = $field->read($stream);
+            foreach ($this->fields as $fieldName => $field) {
+                $subFields[$fieldName] = $field->read($stream);
             }
 
             $readFields[] = $subFields;

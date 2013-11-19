@@ -15,11 +15,11 @@ use ILDA\DTF\Streams\StreamInterface;
  *
  * @since 1.0
  */
-class Text extends PrimitiveField
+class Text implements FieldInterface
 {
     public function read(StreamInterface $stream)
     {
-        $bytes = $stream->read($this->size->getBytes());
+        $bytes = $stream->read($this->size);
         return strval($bytes);
     }
 }

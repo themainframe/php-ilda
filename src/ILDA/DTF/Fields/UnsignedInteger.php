@@ -8,6 +8,7 @@
 namespace ILDA\DTF\Fields;
 
 use ILDA\DTF\Fields;
+use ILDA\DTF\Streams\StreamInterface;
 
 /**
  * UnsignedInteger
@@ -15,7 +16,18 @@ use ILDA\DTF\Fields;
  *
  * @since 1.0
  */
-class UnsignedInteger extends PrimitiveField
+class UnsignedInteger implements FieldInterface
 {
+    public function read(StreamInterface $stream)
+    {
+        $data = $stream->read($this->size);
 
+        if (strlen($data) < 2) {
+            $data = str_pad($data, 2, "\0", STR_PAD_LEFT);
+        }
+
+        $unpacked = unpack('n', $data);
+
+        return intval($unpacked[1]);
+    }
 }
