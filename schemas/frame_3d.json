@@ -1,97 +1,91 @@
 {
 	"ilda_header": {
-		"type": "ascii",
-		"bytes": 4
+		"_type": "Text",
+		"size": 4
 	},
 
 	"format_code": {
-		"type": "unsigned-int",
-		"bytes": 4
+		"_type": "UnsignedInteger",
+		"size": 4
 	},
 
 	"frame_name": {
-		"type": "ascii",
-		"bytes": 8
+		"_type": "Text",
+		"size": 8
 	},
 
 	"company_name": {
-		"type": "ascii",
-		"bytes": 8
+		"_type": "Text",
+		"size": 8
 	},
 
 	"total_points": {
-		"type": "unsigned-int",
-		"bytes": 2
+		"_type": "UnsignedInteger",
+		"size": 2
 	},
 
 	"frame_number": {
-		"type": "unsigned-int",
-		"bytes": 2
+		"_type": "UnsignedInteger",
+		"size": 2
 	},
 
 	"total_frames": {
-		"type": "unsigned-int",
-		"bytes": 2
+		"_type": "UnsignedInteger",
+		"size": 2
 	},
 
 	"scanner_head": {
-		"type": "unsigned-int",
-		"bytes": 1
+		"_type": "UnsignedInteger",
+		"size": 1
 	},
 
 	"future": {
-		"type": "unsigned-int",
-		"bytes": 1
+		"_type": "UnsignedInteger",
+		"size": 1
 	},
 
 	"points": {
 
-		"type": "fieldset",
-		"count": "@total_points",
-		"fields": {
+		"_type": "CompoundField",
+		"count": 1192,
+		"_fields": {
 
 			"x_coordinate": {
-				"type": "signed-int",
-				"bytes": 2
+				"_type": "UnsignedInteger",
+				"size": 2
 			},
 
 			"y_coordinate": {
-				"type": "signed-int",
-				"bytes": 2
+				"_type": "UnsignedInteger",
+				"size": 2
 			},
 
 			"z_coordinate": {
-				"type": "signed-int",
-				"bytes": 2
+				"_type": "UnsignedInteger",
+				"size": 2
 			},
 
 			"status_code": {
-				"type": "compound",
-				"bytes": 2,
-				"fields": {
+				"_type": "CompoundField",
+				"_fields": {
 
-					"colour_number": {
-						"type": "unsigned-int",
-						"bits": 8
-					},
+                    "flags": {
+                        "_type": "MaskedField",
+                        "direction": "lsb",
+                        "structure": {
+                            "unassigned": 6,
+                            "blanking": 1,
+                            "last_point": 1
+                        }
+                    },
 
-					"unassigned": {
-						"type": "ignored",
-						"bits": 6
-					},
+                    "colour_number": {
+                        "_type": "UnsignedInteger",
+                        "size": 1
+                    }
 
-					"blanking": {
-						"type": "unsigned-int",
-						"bits": 1
-					},
-
-					"last_point": {
-						"type": "unsigned-int",
-						"bits": 1
-					}
-					
-				}
-			},
+                }
+			}
 		}
 	}
 }
