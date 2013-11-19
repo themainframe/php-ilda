@@ -49,7 +49,7 @@ class FileStream implements StreamInterface
      * Reads a number of bytes equal to $count from the stream and advances the internal
      * position by the appropriate amount.
      *
-     * @param $count The number of bytes to read.
+     * @param int $count The number of bytes to read.
      * @return string
      */
     public function read($count)
