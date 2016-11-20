@@ -108,6 +108,11 @@ class FrameReader
             case 0x03:
 
                 break;
+
+            default:
+                // Not a valid frame to read here
+                return null;
+
         }
 
         // Build the initial frame parameters
@@ -126,6 +131,9 @@ class FrameReader
         }
 
         $this->logger->info('read ' . count($frame->points) . ' points');
+
+        // Skip the trailing NUL byte after the frame
+        $this->byteIndex += 1;
 
         return $frame;
     }
